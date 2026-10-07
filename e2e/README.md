@@ -44,7 +44,7 @@ Flows target **read-only seeded data** (the demo repo `acme/payments-api`, PR
 > stack and leaves your dev DB untouched.
 >
 > ⚠️ **Never `docker compose down -v` to "reset" your dev DB** — `-v` deletes the
-> `devdigest_pgdata` volume along with every real repo and review you've imported.
+> `devdigest-pro-pgdata` volume along with every real repo and review you've imported.
 
 ## Run locally
 
@@ -59,7 +59,7 @@ npm i -g agent-browser && agent-browser install
 # Boots an isolated, freshly-seeded stack on alternate ports
 # (Postgres :5433, API :3101, web :3100), runs the flows, then tears it all
 # down. Safe to run while your normal dev stack is up — it never touches your
-# dev DB or the devdigest_pgdata volume.
+# dev DB or the devdigest-pro-pgdata volume.
 ./scripts/e2e.sh
 # or: cd e2e && npm install && npm run e2e:hermetic
 ```
@@ -83,7 +83,7 @@ Env knobs:
 - Runner: `E2E_BASE_URL`, `AGENT_BROWSER_BIN` (default `agent-browser`),
   `E2E_STEP_TIMEOUT` (ms, default 60000).
 - Hermetic stack (`scripts/e2e.sh`): `E2E_PG_PORT` (5433), `E2E_API_PORT` (3101),
-  `E2E_WEB_PORT` (3100), `E2E_PG_CONTAINER` (`devdigest-e2e-postgres`),
+  `E2E_WEB_PORT` (3100), `E2E_PG_CONTAINER` (`devdigest-pro-e2e-postgres`),
   `E2E_PG_IMAGE` (`pgvector/pgvector:pg16`).
 
 Failure screenshots are written to `e2e/test-results/` (git-ignored; uploaded as

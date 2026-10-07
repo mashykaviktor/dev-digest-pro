@@ -20,7 +20,7 @@ high-confidence guidance unless it's obviously stale.
 ## Do-not-touch / gotchas
 
 - **Never** `docker compose down -v` to "reset" the dev DB — `-v` deletes the
-  `devdigest_pgdata` volume along with every real repo and review imported
+  `devdigest-pro-pgdata` volume along with every real repo and review imported
   through the studio, not just e2e state.
 - Flows `02`/`04`/`05` assume the seeded demo repo (`acme/payments-api`, PR
   #482) is the **only** repo in the DB — running `npm test` against your own

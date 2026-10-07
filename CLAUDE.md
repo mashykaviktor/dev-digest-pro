@@ -85,8 +85,8 @@ high-confidence guidance unless it's obviously stale.
 
 ## Gotchas
 
-- `docker compose down -v` deletes the `devdigest_pgdata` volume — wipes every
-  imported repo and review. Use `docker compose down` (no `-v`) to just stop.
+- `docker compose down -v` deletes the `devdigest-pro-pgdata` volume — wipes
+  every imported repo and review. Use `docker compose down` (no `-v`) to just stop.
 - e2e flows `02`/`04`/`05` assume a DB seeded with only the one demo repo — run
   `./scripts/e2e.sh` (hermetic), not `e2e && npm test` against your real dev DB,
   unless you know it holds only the seed data.
