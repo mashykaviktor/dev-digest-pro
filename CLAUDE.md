@@ -1,7 +1,7 @@
 # DevDigest — root map
 
-Course starter: local-first AI PR review. Full narrative, architecture diagram,
-lesson roadmap: [README.md](README.md).
+AI Agentic Engineering capstone: local-first AI PR review. Full narrative,
+architecture diagram, and what was built across the capstone: [README.md](README.md).
 
 ## Stack
 
@@ -72,7 +72,7 @@ high-confidence guidance unless it's obviously stale.
 - Local Postgres is **shared across every git worktree** — one `docker
   compose` instance, not one per worktree. Two worktrees generating
   migrations independently (`pnpm db:generate`) will collide on the next
-  `idx` if both touch schema in the same lesson/branch pair.
+  `idx` if both touch schema for the same feature/branch at once.
 
 ## Do-not-touch / edit-with-care
 

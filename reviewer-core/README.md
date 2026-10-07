@@ -4,9 +4,9 @@ Pure review logic: **diff → prompt → LLM → grounded findings**. No databas
 GitHub, or filesystem; the only side effect is an LLM call through an **injected**
 `LLMProvider`, which is what makes it mock-testable.
 
-In the starter the **server** (`@devdigest/api`) is its only consumer — for local
-reviews in the studio. (The CI runner that runs the same engine in GitHub Actions
-is added back in the Export-to-CI lesson, L06.) The server wires it via a tsconfig
+The **server** (`@devdigest/api`) consumes it for local reviews in the studio;
+`agent-runner` is the second consumer, running the exact same engine inside a
+target repo's own GitHub Actions. The server wires it via a tsconfig
 path alias (`@devdigest/reviewer-core` → `../reviewer-core/src`) and consumes the
 TypeScript **source** directly (tsx in dev, vitest in tests). The package never
 emits JS — its `build` is a type-check.
@@ -28,11 +28,12 @@ in the diff is dropped, so the engine can't hallucinate locations. The score is
 recomputed deterministically from the **surviving** findings, not trusted from the
 model. `review/run.ts` orchestrates the run (single-pass by default).
 
-The engine also accepts optional prompt slots the **course lessons** start
-feeding it — `skills` (L02), `memory` (L07), `specs` (L05), `callers` — plus a
-`reduce()`/map-reduce path and a `toReview()` CI payload helper used from L06.
-In the starter the server passes only the diff, system prompt, and repo map; the
-extra slots are omitted, so `assemblePrompt` simply leaves those sections out.
+The engine also accepts optional prompt slots — `skills`, `memory`, `specs`,
+`callers` — plus a `reduce()`/map-reduce path and a `toReview()` CI payload
+helper used by `agent-runner`. The server (`run-executor.ts`) now wires in
+`skills`, `callers`, `repoMap`, and `specs`; `memory` is the one slot still
+not fed into the prompt. Any slot that's omitted simply isn't rendered —
+`assemblePrompt` leaves that section out rather than erroring.
 
 ## Public API
 

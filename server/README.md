@@ -6,12 +6,15 @@ grounded structured findings). Fastify 5 + Drizzle ORM over Postgres (pgvector).
 Adapters (LLM, GitHub, git, ast-grep, …) sit behind a DI container so they can be
 swapped for mocks in tests.
 
-> This is the **starter** module set. Later course lessons add their own modules
-> (skills, intent/smart-diff, blast, brief/context/onboarding, eval/ci/hooks,
-> memory, plugins, …) — each is a self-contained `modules/<name>/` plugin plus,
-> usually, a slot it starts feeding the reviewer prompt. The DB schema already
-> contains **every** table; the unused ones simply sit empty until a lesson fills
-> them.
+> This repository started from a course-provided starter module set and was
+> progressively extended into the AI Agentic Engineering capstone described in
+> the root [README.md](../README.md). The core engine modules below (repos,
+> pulls, reviews, agents, repo-intel, settings, workspace) are the original
+> foundation; `src/modules/` has since grown to include skills, intent,
+> blast, brief, project-context, onboarding, conventions, eval, ci, and
+> memory — each a self-contained `modules/<name>/` plugin, most of which feed
+> their own slot into the reviewer prompt. See `ls server/src/modules` for the
+> current list.
 
 - **Stack:** Fastify 5 (`@fastify/helmet`, `@fastify/rate-limit`, `@fastify/cors`,
   `fastify-sse-v2` for streaming run traces), Drizzle ORM, `postgres`, pgvector.
@@ -59,7 +62,10 @@ flowchart LR
 
 ## API map (starter)
 
-Each module owns its routes (`modules/<name>/routes.ts`). Grouped by domain:
+Each module owns its routes (`modules/<name>/routes.ts`). Grouped by domain —
+this diagram covers the original core review-flow modules; skills, intent,
+blast, brief, project-context, onboarding, conventions, eval, ci, and memory
+each own their own `routes.ts` not diagrammed here:
 
 ```mermaid
 flowchart TB
@@ -142,7 +148,7 @@ What the reviewer actually sends to the model is assembled in
   are dropped from the end of the resolved (agent-then-skill) order — never
   truncated mid-document.
 
-## Agent Performance dashboard & Stats (later lesson)
+## Agent Performance dashboard & Stats
 
 Two read-only, zero-model-call endpoints share one aggregation
 (`plans/16-agent-performance-dashboard.md`):

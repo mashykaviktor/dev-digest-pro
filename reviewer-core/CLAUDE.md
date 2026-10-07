@@ -14,10 +14,13 @@ high-confidence guidance unless it's obviously stale.
 - The package never emits JS — `build` is a type-check only. The server
   consumes `src/*` directly via a tsconfig path alias (tsx in dev, vitest in
   tests), not a compiled `dist`.
-- Optional prompt slots (`skills` L02, `memory` L07, `specs` L05, `callers`)
-  are accepted by `assemblePrompt` but currently unused — the starter passes
-  only diff/system-prompt/repo-map. When wiring a new slot, keep it optional:
-  `assemblePrompt` must still work with the slot omitted.
+- Optional prompt slots (`skills`, `memory`, `specs`, `callers`, `repoMap`)
+  are accepted by `assemblePrompt`. The server's `run-executor.ts` already
+  wires in `skills`, `callers`, `repoMap`, and `specs`; `memory` is the one
+  slot still not fed into the prompt (a memory module/table exists, but
+  nothing passes its contents through this slot yet). When wiring a new
+  slot, keep it optional: `assemblePrompt` must still work with the slot
+  omitted.
 
 ## Do-not-touch
 
@@ -50,8 +53,9 @@ typecheck` doubles as the build.
   [../docs/architecture.md](../docs/architecture.md).
 - Testing/CI questions: [../TESTING.md](../TESTING.md).
 - How `assemblePrompt` builds an agent's system prompt: [../docs/agent-prompts](../docs/agent-prompts/).
-- Building a feature that has a spec: [../specs/](../specs/) — also the future
-  source for the `specs` prompt slot (L05).
+- Building a feature that has a spec: [../specs/](../specs/) — also the
+  source for the resolved project-context documents fed into the `specs`
+  prompt slot (specs/09-project-context-folder.md).
 
 Finishing a substantive task here (bug fix, non-trivial change, discovery)?
 Append an entry to [LEARNINGS.md](LEARNINGS.md) — don't skip it.

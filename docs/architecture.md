@@ -88,8 +88,11 @@ diff-only context. If findings suddenly lack project awareness, check the
 index state before suspecting the prompt.
 
 `assemblePrompt` takes optional slots (`skills`, `memory`, `specs`,
-`callers`, `repoMap`) and omits any section it wasn't given. The starter
-passes only diff, system prompt and repo map; later lessons fill the rest.
+`callers`, `repoMap`) and omits any section it wasn't given. `run-executor.ts`
+now fills most of them — skill bodies, the callers digest, the repo map, and
+resolved project-context documents are all wired in, each with an
+omit-when-empty contract. `memory` is the one slot still not fed into the
+prompt (see [reviewer-core/CLAUDE.md](../reviewer-core/CLAUDE.md)).
 
 ## Contracts
 
@@ -105,7 +108,7 @@ both packages, so nothing catches it for you.
 
 ## Where state lives
 
-Around 40 tables (most belong to later lessons); the ones a review touches:
+Around 40 tables across all modules; the ones a review run specifically touches:
 
 | Table | Holds |
 |---|---|
