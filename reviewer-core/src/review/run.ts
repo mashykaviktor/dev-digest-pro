@@ -56,8 +56,13 @@ export interface ReviewInput {
   skills?: string[];
   /** Curated memory items. */
   memory?: string[];
-  /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */
-  specs?: string[];
+  /**
+   * specs/09 — resolved project-context documents (untrusted; delimiter-
+   * wrapped downstream, one wrapper per document, labelled with its path).
+   * Already-resolved by the caller (server): discovery, attachment
+   * resolution, budgeting and reading all happen upstream, never here.
+   */
+  specs?: { path: string; content: string }[];
   /**
    * Optional callers-of-changed-symbols digest (T1.3). Untrusted; rendered
    * before the diff section. Empty/undefined → section omitted.
@@ -71,6 +76,21 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /**
+   * L03 — derived PR intent (already-resolved string; server-side signal
+   * gathering + one LLM call happens upstream in the server's intent module,
+   * never here). Untrusted; delimiter-wrapped downstream. Empty/undefined →
+   * section omitted.
+   */
+  intent?: string;
+  /**
+   * Revision 2 (specs/05-intent-layer.md) — already-resolved structured
+   * scope, alongside `intent` above. Untrusted; delimiter-wrapped downstream.
+   * Empty/undefined → section omitted.
+   */
+  intentInScope?: string[];
+  /** Declared out-of-scope items — see `intentInScope`. */
+  intentOutOfScope?: string[];
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -108,6 +128,14 @@ export interface ReviewOutcome {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  /**
+   * specs/16-agent-performance-dashboard.md — provenance of `costUsd`.
+   * Map-reduce aggregates conservatively: 'provider' only if EVERY chunk
+   * reported provider cost, else 'estimated' — mirroring the null-collapse
+   * rule `costUsd` itself already follows below. `null` whenever `costUsd`
+   * is `null` (nothing to attribute a source to).
+   */
+  costSource: 'provider' | 'estimated' | null;
   /** Joined raw model outputs (for the run trace). */
   raw: string;
 }
@@ -135,6 +163,9 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    intent: input.intent,
+    intentInScope: input.intentInScope,
+    intentOutOfScope: input.intentOutOfScope,
     task: input.task,
   };
 
@@ -157,6 +188,9 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   let tokensIn = 0;
   let tokensOut = 0;
   let costUsd: number | null = 0;
+  // Starts optimistic; downgraded to false the moment any costed chunk isn't
+  // 'provider'. Only meaningful once costUsd is confirmed non-null below.
+  let allChunksProvider = true;
   const raws: string[] = [];
 
   for (const chunk of chunks) {
@@ -182,6 +216,11 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;
     costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
+    // A provider that doesn't set costSource but DID return a cost only ever
+    // does so via a price-book estimate in this codebase (OpenRouter is the
+    // only provider that ever reports 'provider') — default missing-but-costed
+    // to 'estimated' rather than treating it as unknown provenance.
+    if (res.costUsd != null && (res.costSource ?? 'estimated') !== 'provider') allChunksProvider = false;
     raws.push(res.raw);
     partials.push(res.data);
     emit('result', `${chunk.label}: ${res.data.findings.length} candidate finding(s)`);
@@ -214,6 +253,10 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensIn,
     tokensOut,
     costUsd,
+    // costUsd is only non-null when EVERY chunk contributed a real number, so
+    // allChunksProvider is only meaningful in that case — matches "'provider'
+    // only if every chunk reported provider cost, else 'estimated'".
+    costSource: costUsd == null ? null : allChunksProvider ? 'provider' : 'estimated',
     raw: raws.join('\n---\n'),
   };
 }

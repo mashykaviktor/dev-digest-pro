@@ -69,7 +69,7 @@ flowchart TB
     polling["polling<br/>/repos/:id/poll"]
   end
   subgraph Review["Review & runs"]
-    reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
+    reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace) · /reviews/adhoc (sync, non-persisting)"]
   end
   subgraph Agents["Agents"]
     agents["agents<br/>/agents · /agents/:id"]
@@ -131,6 +131,45 @@ What the reviewer actually sends to the model is assembled in
 - **Grounding is mandatory.** Every finding must cite a line that exists in the
   diff or it is dropped (`groundFindings`), and the score is recomputed from the
   surviving findings — the model's self-reported score is ignored.
+- **Project Context (specs/09-project-context-folder.md).** Agent-attached and
+  skill-inherited markdown documents are read from a repo's synced default-
+  branch checkout (never the PR branch head) and injected under `## Project
+  context`, untrusted-wrapped per document. Default search roots — used when a
+  repo's `doc_roots` override is unset — are `specs`, `docs`,
+  `.devdigest/specs` (`modules/project-context/constants.ts`'s
+  `DEFAULT_DOC_ROOTS`, editable per-repo via `PUT /repos/:id/context/config`).
+  The assembled block is capped at 8000 tokens; over budget, whole documents
+  are dropped from the end of the resolved (agent-then-skill) order — never
+  truncated mid-document.
+
+## Agent Performance dashboard & Stats (later lesson)
+
+Two read-only, zero-model-call endpoints share one aggregation
+(`plans/16-agent-performance-dashboard.md`):
+
+- `GET /agents/performance` (`modules/ci/routes.ts`) — the workspace-wide
+  dashboard: per-agent rows, cost-by-agent/cost-by-model breakdowns, and a
+  `most_active_agent` summary for the selected range.
+- `GET /agents/:id/stats` (`modules/agents/routes.ts`) — one agent's own
+  numbers, built from the exact same query and rules so it reconciles with
+  that agent's row in the dashboard (AC-1).
+
+Both call `CiRepository.performanceRows(workspaceId, from, to, agentId?)` and
+derive accept-rate, avg-cost, low-sample marking (`< 20` accept/dismiss
+decisions), and previous-period deltas through `modules/_shared/perf.ts` — a
+small library of pure aggregation functions, not a renderer. (Every prior
+`_shared/` file was a shared string-builder; see `LEARNINGS.md`'s 2026-09-23
+"Codebase Patterns" entry for the cross-module port wiring this new shape
+needed.) Range is `1`/`7`/`30`/`90`-day presets or a custom `from`/`to` window
+(capped at 366 days).
+
+`agent_runs.cost_source` (`'provider' | 'estimated' | null`, migration
+`0027`) tags each run's cost with its provenance — `'provider'` when
+OpenRouter returned its own `usage.cost`, `'estimated'` when the injected
+price-book fallback priced it instead (see `specs/01-run-cost-badge.md` for
+how `cost_usd` itself is computed), `null` for pre-migration rows. Both
+endpoints return a cost-by-source breakdown so a caller can distinguish
+reconciled billing data from a DevDigest estimate.
 
 ## Testing
 

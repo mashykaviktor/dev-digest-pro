@@ -3,7 +3,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
-import { IdParams } from '../_shared/schemas.js';
+import { IdParams, PerfRangeQuery, toPerfRange } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { AgentsService } from './service.js';
 
@@ -26,6 +26,7 @@ const VersionParams = z.object({
  *   GET    /agents/:id/versions/:version → one config snapshot
  *   GET    /agents/:id/skills       → linked skills (ordered)
  *   POST   /agents/:id/skills       → set/reorder linked skills OR link one
+ *   PUT    /agents/:id/skills/:skillId → toggle/reposition ONE link (no unlink)
  *   GET    /agents/:id/models       → dynamic model list for the agent's provider
  *   GET    /providers/:id/models    → dynamic model list for a provider (editor)
  */
@@ -62,14 +63,36 @@ const SetSkillsBody = z
     skill_ids: z.array(z.string().uuid()).optional(),
     skill_id: z.string().uuid().optional(),
     order: z.number().int().optional(),
+    enabled: z.boolean().optional(),
   })
   .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
     message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
   });
 
+/** `/agents/:id/skills/:skillId` — both uuids. */
+const AgentSkillParams = z.object({
+  id: z.string().uuid(),
+  skillId: z.string().uuid(),
+});
+
+/** Toggle the per-agent gate and/or reposition — never unlinks. */
+const UpdateSkillLinkBody = z.object({
+  enabled: z.boolean().optional(),
+  order: z.number().int().min(0).optional(),
+});
+
 export default async function agentsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
-  const service = new AgentsService(app.container);
+  // specs/16-agent-performance-dashboard.md — `app.container.ciRepo`'s real
+  // `performanceRows` satisfies `PerformanceRowSource` structurally; wired
+  // here (the composition point) rather than imported by type in service.ts
+  // (`no-cross-module`).
+  const service = new AgentsService(
+    app.container.agentsRepo,
+    (id) => app.container.llm(id),
+    app.container.evalRepo,
+    app.container.ciRepo,
+  );
 
   app.get('/agents', async (req) => {
     const { workspaceId } = await getContext(app.container, req);
@@ -158,7 +181,32 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
       const links =
         body.skill_ids !== undefined
           ? await service.setSkills(workspaceId, req.params.id, body.skill_ids)
-          : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
+          : await service.linkSkill(
+              workspaceId,
+              req.params.id,
+              body.skill_id!,
+              body.order,
+              body.enabled,
+            );
+      if (!links) throw new NotFoundError('Agent not found');
+      return links;
+    },
+  );
+
+  // Toggle ONE link's per-agent gate (the Skills-tab checkbox) or move it.
+  // Deliberately NOT a DELETE: unchecking keeps the row so `order` survives and
+  // re-checking restores the skill's position in the assembled prompt.
+  app.put(
+    '/agents/:id/skills/:skillId',
+    { schema: { params: AgentSkillParams, body: UpdateSkillLinkBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const links = await service.setSkillEnabled(
+        workspaceId,
+        req.params.id,
+        req.params.skillId,
+        req.body,
+      );
       if (!links) throw new NotFoundError('Agent not found');
       return links;
     },
@@ -175,4 +223,17 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     await getContext(app.container, req);
     return service.listModels(req.params.id);
   });
+
+  // specs/16-agent-performance-dashboard.md — the per-agent Stats tab, built
+  // from the SAME query + rules `GET /agents/performance` uses (AC-1).
+  app.get(
+    '/agents/:id/stats',
+    { schema: { params: IdParams, querystring: PerfRangeQuery } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const stats = await service.stats(workspaceId, req.params.id, toPerfRange(req.query));
+      if (!stats) throw new NotFoundError('Agent not found');
+      return stats;
+    },
+  );
 }

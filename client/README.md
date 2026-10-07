@@ -40,6 +40,34 @@ Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
 `g`-then-key shortcuts). Pages are thin; feature logic sits in colocated
 `_components/<Name>/` folders, each with its own `*.test.tsx`.
 
+## Agent Performance dashboard & Stats tab
+
+Two more surfaces read `GET /agents/performance` and `GET /agents/:id/stats`
+via `src/lib/hooks/agent-performance.ts` (`plans/16-agent-performance-dashboard.md`)
+— both hooks share one `PerfRangeValue` shape (`{ days }` or a custom
+`{ from, to }`):
+
+- `/agent-performance` (`_components/AgentPerfView/`) — workspace dashboard:
+  summary tiles (runs, cost, accept rate, most-active agent), a sortable
+  agent table with a low-sample accept-rate marker (`< 20` decisions) and
+  row-expand, and cost-by-agent/cost-by-model breakdowns.
+- The agent editor's **Stats** tab (`/agents/:id?tab=stats`,
+  `AgentEditor/_components/StatsTab/`) — the same figures scoped to one
+  agent, so it reconciles with that agent's dashboard row (AC-1).
+
+Both share one range control, `src/components/perf-range-picker/PerfRangePicker/`
+— `1`/`7`/`30`/`90`-day presets plus a custom date range, built for the
+dashboard and promoted so the Stats tab could reuse it for a like-for-like
+comparison.
+
+**Gotcha this feature exposed:** `AgentEditor/constants.ts`'s `TABS` (drives
+the tab bar) and `AgentEditorView/constants.ts`'s `VALID_TABS` (gates the
+`?tab=` query param) are two separate arrays that must list the same keys —
+nothing but a test enforces this, and the failure mode is a silently
+unreachable tab, not an error. `constants.test.ts` now asserts `VALID_TABS`
+is a superset of `TABS`'s keys; see `LEARNINGS.md`'s 2026-09-23 "Recurring
+Errors & Fixes" entry for the incident this closes.
+
 ## Testing
 
 Component/interaction tests (`*.test.tsx`) run under vitest + jsdom with `fetch`

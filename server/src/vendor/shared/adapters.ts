@@ -75,6 +75,18 @@ export interface StructuredResult<T> {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  /**
+   * specs/16-agent-performance-dashboard.md — provenance of `costUsd`:
+   * 'provider' when the provider returned a real generation cost (currently
+   * only OpenRouter's `usage.cost` extension), 'estimated' when it was
+   * derived from a price book, `null` when `costUsd` itself is `null`
+   * (unknown). Optional so existing `StructuredResult` literals (test
+   * fixtures, other providers) keep compiling — callers should treat a
+   * missing field alongside a non-null `costUsd` as `'estimated'` (every
+   * non-OpenRouter provider in this codebase only ever prices via the price
+   * book).
+   */
+  costSource?: 'provider' | 'estimated' | null;
   raw: string;
   attempts: number;
 }
@@ -140,6 +152,29 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
+/** specs/14-export-to-ci.md — one GitHub Actions workflow run, as returned by
+ *  `GET /repos/{owner}/{repo}/actions/workflows/{workflow}/runs`. */
+export interface WorkflowRun {
+  id: number;
+  status: string;
+  conclusion: string | null;
+  head_sha: string;
+  html_url: string;
+  display_title: string;
+  created_at: string;
+  updated_at: string;
+  run_started_at: string | null;
+  pull_requests: number[];
+}
+
+/** One artifact published by a workflow run (metadata only — no bytes). */
+export interface RunArtifact {
+  id: number;
+  name: string;
+  size_in_bytes: number;
+  expired: boolean;
+}
+
 export interface GitHubClient {
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
@@ -164,6 +199,28 @@ export interface GitHubClient {
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
+  /**
+   * specs/14-export-to-ci.md — completed (and in-progress) runs of the
+   * workflow at `opts.workflowPath` (e.g. `.github/workflows/devdigest.yml`),
+   * newest first. Ingestion (AC-17) polls this to discover runs to pull back.
+   */
+  listWorkflowRuns(
+    repo: RepoRef,
+    opts: { workflowPath: string; perPage?: number },
+  ): Promise<WorkflowRun[]>;
+  /** Artifacts published by one workflow run (metadata only). */
+  listRunArtifacts(repo: RepoRef, runId: number): Promise<RunArtifact[]>;
+  /** Download one artifact's raw zip bytes. */
+  downloadArtifact(repo: RepoRef, artifactId: number): Promise<Uint8Array>;
+  /**
+   * NAMES only, never values — GitHub's own Actions-secrets API never
+   * returns a secret's value either way (AC-15, AC-64). Returns `null`,
+   * never an empty array or a thrown error, when the credential is not
+   * permitted to LIST secrets at all (a 403 on this endpoint — the common
+   * case for a fine-grained local-mode PAT lacking `Secrets: read`) — the
+   * caller must render that as "unknown", never as "missing" (P-7).
+   */
+  listRepoSecretNames(repo: RepoRef): Promise<string[] | null>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

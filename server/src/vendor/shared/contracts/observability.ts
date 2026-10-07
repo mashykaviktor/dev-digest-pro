@@ -38,12 +38,14 @@ export const AgentColumn = z.object({
   agent_name: z.string(),
   provider: z.string().nullable(),
   model: z.string().nullable(),
-  status: z.enum(['done', 'failed', 'running']),
+  status: z.enum(['done', 'failed', 'running', 'cancelled']),
   verdict: z.string().nullable(),
   score: z.number().int().nullable(),
   summary: z.string().nullable(),
   duration_ms: z.number().int().nullable(),
   cost_usd: z.number().nullable(),
+  /** Failure reason when status='failed' (AC-47, AC-49); null otherwise. */
+  error: z.string().nullable(),
   findings: z.array(AgentColumnFinding),
 });
 export type AgentColumn = z.infer<typeof AgentColumn>;
@@ -85,6 +87,20 @@ export const MultiAgentRun = z.object({
 });
 export type MultiAgentRun = z.infer<typeof MultiAgentRun>;
 
+/**
+ * Per-agent historical average, for the configure surface's estimate (D22,
+ * AC-5, AC-6). `null` on either numeric field means "no completed run to
+ * derive from" — the client must say so, never render `0`.
+ */
+export const AgentRunEstimate = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  runs: z.number().int(),
+  avg_duration_ms: z.number().int().nullable(),
+  avg_cost_usd: z.number().nullable(),
+});
+export type AgentRunEstimate = z.infer<typeof AgentRunEstimate>;
+
 // ---------------------------------------------------------------------------
 // Per-agent Stats (GET /agents/:id/stats)
 // ---------------------------------------------------------------------------
@@ -115,6 +131,27 @@ export const AgentStats = z.object({
   }),
   /** recent runs for a small trend chart (oldest→newest). */
   trend: z.array(StatPoint),
+  /**
+   * specs/16-agent-performance-dashboard.md — built from the SAME
+   * `performanceRows` query + `_shared/perf.ts` rules as
+   * `AgentPerf`/`AgentPerfRow` (`contracts/productionize.ts`), scoped to this
+   * one agent, so AC-1's "same API, same rules" reconciliation is literal.
+   * See `PerfCostBySource`'s doc comment for the null-is-not-zero convention
+   * on `cost_by_source`.
+   */
+  counted_runs: z.number().int(),
+  costed_runs: z.number().int(),
+  cost_by_source: z.object({
+    provider: z.number().nullable(),
+    estimated: z.number().nullable(),
+    unknown: z.number().nullable(),
+  }),
+  decisions: z.number().int(),
+  low_sample: z.boolean(),
+  runs_delta: z.number().nullable(),
+  accept_rate_delta: z.number().nullable(),
+  cost_delta: z.number().nullable(),
+  range: z.object({ from: z.string(), to: z.string() }),
 });
 export type AgentStats = z.infer<typeof AgentStats>;
 
