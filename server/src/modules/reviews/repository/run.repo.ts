@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
@@ -59,6 +59,7 @@ export async function listRunsForPull(
     duration_ms: run.durationMs,
     tokens_in: run.tokensIn,
     tokens_out: run.tokensOut,
+    cost_usd: run.costUsd,
     findings_count: run.findingsCount,
     grounding: run.grounding,
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
@@ -146,6 +147,7 @@ export async function completeAgentRun(
     durationMs: number;
     tokensIn: number;
     tokensOut: number;
+    costUsd: number | null;
     findingsCount: number;
     grounding: string;
     /** Review score (0-100); null on failed/cancelled runs. */
@@ -154,6 +156,9 @@ export async function completeAgentRun(
     blockers?: number | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
+    /** specs/16-agent-performance-dashboard.md — provenance of `costUsd`.
+     *  `null`/omitted whenever cost itself is null (never guessed). */
+    costSource?: 'provider' | 'estimated' | null;
   },
 ): Promise<void> {
   await db
@@ -163,6 +168,8 @@ export async function completeAgentRun(
       durationMs: values.durationMs,
       tokensIn: values.tokensIn,
       tokensOut: values.tokensOut,
+      costUsd: values.costUsd,
+      costSource: values.costSource ?? null,
       findingsCount: values.findingsCount,
       grounding: values.grounding,
       score: values.score ?? null,
@@ -170,6 +177,33 @@ export async function completeAgentRun(
       error: values.error ?? null,
     })
     .where(eq(t.agentRuns.id, runId));
+}
+
+/**
+ * Record which skills were injected into ONE run's prompt, and what each cost.
+ *
+ * Written by the run executor at prompt-assembly time — this table is NOT
+ * derivable from `agent_skills`, because links get toggled and reordered after
+ * the fact and `run_skills` has to keep saying what was true when the run ran.
+ * It is the only source of truth behind the Skill Stats tab (pull frequency,
+ * tokens/run, run-level findings attribution).
+ *
+ * Idempotent on (run_id, skill_id) so a retried write can't blow up the run.
+ * No rows → nothing written (an agent with no enabled skills).
+ */
+export async function recordRunSkills(
+  db: Db,
+  runId: string,
+  rows: { skillId: string; order: number; tokens: number }[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await db
+    .insert(t.runSkills)
+    .values(rows.map((r) => ({ runId, skillId: r.skillId, order: r.order, tokens: r.tokens })))
+    .onConflictDoUpdate({
+      target: [t.runSkills.runId, t.runSkills.skillId],
+      set: { order: sql`excluded."order"`, tokens: sql`excluded."tokens"` },
+    });
 }
 
 /** Persist the WHOLE run log as ONE document. PK = runId → agent_runs. */

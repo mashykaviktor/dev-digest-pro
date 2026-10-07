@@ -1,161 +1,574 @@
-# DevDigest — starter
+# DevDigest — AI Agentic Engineering Capstone
 
-Local-first AI pull-request review. This is the **course starter template**: a
-minimal-but-working tool that does exactly one thing end to end — **import a PR
-and run an agent review on it**. Every later course lesson adds one feature back
-(see [_What you build in the course_](#what-you-build-in-the-course)).
+**DevDigest** is a local-first AI engineering platform for understanding repositories, reviewing pull requests, identifying change risk, and providing grounded engineering insights.
 
-Several standalone packages (no monorepo workspace — each has its own
-`package.json` and lockfile; cross-package code is shared through tsconfig path
-aliases, not published modules):
+This repository is my **AI Agentic Engineering capstone project**. It started from a course-provided starter repository and was progressively extended throughout the program with repository intelligence, agentic workflows, MCP integration, evaluation tooling, CI automation, multi-agent review, and engineering-quality safeguards.
 
-| Folder           | Package                     | What it is                                            | Port |
-|------------------|-----------------------------|-------------------------------------------------------|------|
-| `server/`        | `@devdigest/api`            | Fastify API + Drizzle/Postgres (pgvector)             | 3001 |
-| `client/`        | `@devdigest/web`            | Next.js 15 web app (the studio)                       | 3000 |
-| `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → findings    | —    |
-| `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser)             | —    |
-| `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
+> **Project context:** personal / educational capstone project demonstrating AI-assisted and agentic software engineering practices. It is not presented as commercial production experience.
 
-`repo-intel` (the codebase indexer that powers the **Indexed** badge and feeds
-project context into reviews) lives inside the server at
-[`server/src/modules/repo-intel`](server/src/modules/repo-intel). Only
-**Postgres** runs in Docker; the API and web app run on the host via `pnpm dev`.
+---
+
+## What DevDigest does
+
+DevDigest explores how AI agents can support software engineers across the development lifecycle rather than simply generating code.
+
+The platform combines repository analysis, structured context, AI-assisted reasoning, and deterministic safeguards to support:
+
+- Pull request review
+- Repository intelligence
+- Import and dependency analysis
+- Intent and risk analysis
+- Smart Diff
+- Blast Radius analysis
+- Project Context and onboarding
+- Multi-agent review
+- Agent skills and reusable workflows
+- AI output evaluation
+- CI review automation
+- Agent performance analysis
+
+The core principle is:
+
+> **Give agents structured, relevant engineering context and explicit quality boundaries instead of relying on a generic prompt and raw code diff.**
+
+---
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  subgraph Studio["Local studio (your machine)"]
-    WEB["client/<br/>Next.js · :3000"]
-    API["server/<br/>Fastify · :3001"]
-    PG[("Postgres<br/>pgvector")]
-    WEB -->|"REST /repos /pulls /agents /runs …"| API
-    API --> PG
-  end
+    subgraph Studio["Local DevDigest Studio"]
+        WEB["client/<br/>Next.js · :3000"]
+        API["server/<br/>Fastify · :3001"]
+        PG[("Postgres<br/>pgvector")]
 
-  CLONE["git clone (add repo)"] --> INDEX["repo-intel<br/>index symbols + import graph<br/>→ repo map"]
-  API --> CLONE
-  INDEX -->|"repo map = review context"| ENGINE
+        WEB -->|"REST /repos /pulls /agents /runs …"| API
+        API --> PG
+    end
 
-  ENGINE["reviewer-core/<br/>diff + repo map → prompt → LLM<br/>→ structured findings → grounding gate"]
-  LLM["LLM<br/>OpenAI · Anthropic · OpenRouter"]
-  API -->|"run review"| ENGINE
-  ENGINE --> LLM
+    CLONE["git clone"] --> INDEX["repo-intel<br/>index symbols + import graph<br/>→ repository map"]
+    API --> CLONE
+    INDEX -->|"repository context"| ENGINE
 
-  SHARED["@devdigest/shared<br/>Zod contracts"]
-  SHARED -.->|"one schema, every package"| WEB
-  SHARED -.-> API
-  SHARED -.-> ENGINE
+    ENGINE["reviewer-core/<br/>diff + repo map → prompt → LLM<br/>→ structured findings → grounding"]
+    LLM["LLM<br/>OpenAI · Anthropic · OpenRouter"]
+
+    API -->|"run review"| ENGINE
+    ENGINE --> LLM
+
+    SHARED["@devdigest/shared<br/>Zod contracts"]
+
+    SHARED -.-> WEB
+    SHARED -.-> API
+    SHARED -.-> ENGINE
+
+    MCP["devdigest-mcp<br/>MCP server"]
+    RUNNER["agent-runner<br/>CI runner"]
+
+    API -.-> MCP
+    ENGINE -.-> RUNNER
 ```
 
-The review flow end to end: **add a repo** → server clones it and `repo-intel`
-indexes it (the **Indexed** badge) → **import PRs** from GitHub → open a PR and
-**Review** → `reviewer-core` assembles a prompt from the diff + the repo map,
-calls the LLM, validates every finding against the diff (the **grounding gate**
-drops hallucinated line references), and persists structured findings with a
-severity and score. All local; the only outbound calls are to GitHub (PR data)
-and the LLM (via OpenRouter).
+### Review flow
 
-Each package has its own README with deeper diagrams:
-[`client`](client/README.md) (UI route map) ·
-[`server`](server/README.md) (API map) ·
-[`reviewer-core`](reviewer-core/README.md) (review pipeline) ·
-[`e2e`](e2e/README.md).
+The end-to-end review flow is:
 
-## What works on day 1
+**add a repository → index repository → import PR → analyze diff → assemble repository-aware context → run AI review → ground findings → persist structured results**
 
-- **Local launch** — one command brings up Postgres (Docker) + API + web.
-- **Settings** — store your LLM API key (OpenAI / Anthropic) and GitHub token.
-- **Add repository** — paste a repo URL; the server clones and indexes it.
-- **Import pull requests** — pull open PRs and their diff, commits, body, and linked issue.
-- **View diff** — GitHub-like diff in the browser.
-- **Agents** — two built-in reviewers (General + Security); create/edit your own (model + system prompt).
-- **Run a review** — single-pass analysis returning structured findings (severity + score), with the grounding gate and repo-map context working from the start.
+The `repo-intel` indexer builds a repository map containing symbols and import relationships. That information becomes additional context for the review engine rather than relying only on the PR diff.
 
-## What you build in the course
+The review pipeline then:
 
-These are intentionally **not** in the starter — each lesson adds one back:
+1. Loads the relevant pull request and repository context.
+2. Builds a structured review prompt.
+3. Calls the configured LLM.
+4. Validates the resulting findings.
+5. Applies the grounding gate to remove unsupported findings or invalid line references.
+6. Persists structured findings, severity, and review scores.
 
-| Lesson | You build |
-|--------|-----------|
-| L01 | Run cost badge · severity filter on findings |
-| L02 | Skills in the product · Conventions extractor |
-| L03 | Intent layer · Smart Diff |
-| L04 | `devdigest-mcp` server · Blast Radius (reads `repo-intel`) |
-| L05 | Project Context Folder · Onboarding generator · PR Brief card |
-| L06 | Eval pipeline · Secret/Phantom gates · Plan Verifier · Export to CI |
-| L07 | Multi-agent review · Run Trace / Live Log · Persistent memory · per-agent stats |
-| L08 | Plugin export/import · Agent performance dashboard · weekly digest |
+Local application services run on the developer machine. External calls are limited to services required by the workflow, such as GitHub and the configured LLM provider.
+
+---
+
+## Repository structure
+
+This is a multi-package repository rather than a pnpm workspace. Each package has its own `package.json` and lockfile, while shared code is connected through TypeScript path aliases.
+
+| Folder                      | Package                    | Purpose                                                 |   Port |
+| --------------------------- | -------------------------- | ------------------------------------------------------- | -----: |
+| `server/`                   | `@devdigest/api`           | Fastify API + Drizzle/Postgres (`pgvector`)             | `3001` |
+| `client/`                   | `@devdigest/web`           | Next.js web application / studio                        | `3000` |
+| `reviewer-core/`            | `@devdigest/reviewer-core` | Review engine: diff → context → prompt → LLM → findings |      — |
+| `e2e/`                      | `@devdigest/e2e`           | Deterministic browser end-to-end tests                  |      — |
+| `server/src/vendor/shared/` | `@devdigest/shared`        | Shared Zod contracts                                    |      — |
+| `mcp-server/`               | `devdigest-mcp`            | MCP server exposing DevDigest capabilities              |      — |
+| `agent-runner/`             | —                          | CI-oriented review runner                               |      — |
+
+`repo-intel`, the repository indexer powering the **Indexed** state and repository-aware review context, lives inside:
+
+```text
+server/src/modules/repo-intel
+```
+
+---
+
+## Key engineering capabilities
+
+### Repository intelligence
+
+DevDigest builds structured knowledge about a repository, including:
+
+- repository structure
+- symbols
+- import relationships
+- dependency information
+- affected areas of the codebase
+- project-level context
+
+This allows AI workflows to reason about changes using more than the current diff.
+
+### Grounded AI review
+
+A major focus of the project is reducing unsupported AI output.
+
+The review pipeline includes mechanisms such as:
+
+- `groundFindings`
+- `wrapUntrusted`
+- structured finding contracts
+- deterministic verdict calculation
+- validation of AI-generated findings
+- repository-aware context
+
+The grounding layer helps prevent hallucinated findings and invalid source references from becoming trusted review results.
+
+### Agentic workflows
+
+The project uses specialized agents and reusable skills for different engineering tasks, including:
+
+- repository exploration
+- project context discovery
+- code review
+- intent analysis
+- risk analysis
+- blast-radius analysis
+- structured evaluation
+- multi-agent review
+
+The goal is to separate responsibilities and give each workflow the context and tools it needs.
+
+### Skills and project context
+
+DevDigest includes reusable skills and project-level context generation so that agents can work with conventions and repository-specific information rather than starting from zero on every task.
+
+### Smart Diff and intent analysis
+
+The review workflow includes additional context layers that help distinguish:
+
+- what changed
+- why the change appears to have been made
+- what areas may be affected
+- where engineering risk may exist
+
+### Blast Radius
+
+The Blast Radius workflow uses repository intelligence to identify areas potentially affected by a change.
+
+This makes dependency and impact analysis part of the AI-assisted engineering workflow rather than an isolated code-review feature.
+
+### Evaluation pipeline
+
+The project includes an evaluation system for measuring agent behaviour and review quality.
+
+Evaluation workflows cover areas such as:
+
+- review quality
+- grounding behaviour
+- deterministic quality gates
+- structured agent output
+- regression detection
+
+This reflects an important principle of AI-assisted engineering:
+
+> **An agent producing an answer is not itself evidence that the answer is correct.**
+
+### Multi-agent review
+
+The project explores combining multiple specialized review agents and aggregating their outputs into a structured review workflow.
+
+This includes support for:
+
+- multiple agents
+- run traces
+- agent-level results
+- review aggregation
+- agent performance analysis
+
+### MCP integration
+
+The repository includes a dedicated MCP server that exposes DevDigest functionality to AI clients through the **Model Context Protocol**.
+
+The MCP integration allows repository and review capabilities to become available as tools within an agentic development workflow.
+
+### CI automation
+
+The project includes an `agent-runner` designed to package review functionality for execution in CI workflows.
+
+This extends the system beyond a local AI experiment into an automated engineering workflow that can be executed against a target repository.
+
+---
+
+## What was built across the capstone
+
+The implementation evolved through a sequence of engineering capabilities:
+
+| Area                   | Capability                                      |
+| ---------------------- | ----------------------------------------------- |
+| Review UX              | Run cost badge, severity filtering              |
+| Agent skills           | Product skills and conventions extraction       |
+| Review intelligence    | Intent layer and Smart Diff                     |
+| Repository analysis    | Blast Radius based on `repo-intel`              |
+| MCP                    | `devdigest-mcp` server                          |
+| Project context        | Context folder, onboarding generation, PR Brief |
+| Evaluation             | Eval pipeline and deterministic quality gates   |
+| Security / correctness | Secret and Phantom gates                        |
+| Planning               | Plan Verifier                                   |
+| CI                     | Export to CI                                    |
+| Agent architecture     | Multi-agent review                              |
+| Observability          | Run Trace / Live Log                            |
+| Memory                 | Persistent agent memory                         |
+| Analytics              | Per-agent statistics                            |
+| Extensibility          | Plugin export / import                          |
+| Operations             | Agent performance dashboard                     |
+| Reporting              | Weekly digest                                   |
+
+---
+
+## What works on day one
+
+The project supports an end-to-end local workflow:
+
+- **Local launch** — start Postgres, API, and web application.
+- **Repository import** — provide a Git repository URL and index it.
+- **Pull request import** — import PR metadata, commits, diff, body, and linked issue information.
+- **Diff viewer** — inspect changes through the web UI.
+- **Agents** — use built-in reviewers and create custom review agents.
+- **Review execution** — run AI-assisted reviews using repository context.
+- **Grounding** — validate generated findings against actual source changes.
+- **Evaluation** — measure and validate agent behaviour.
+- **CI** — export review functionality for automated execution.
+
+---
+
+## Technology
+
+### Frontend
+
+- Next.js
+- React
+- TypeScript
+
+### Backend
+
+- Fastify
+- TypeScript
+- Drizzle ORM
+- PostgreSQL
+- pgvector
+
+### AI / Agentic Engineering
+
+- LLM-based review workflows
+- OpenAI
+- Anthropic
+- OpenRouter
+- MCP (Model Context Protocol)
+- Agent skills
+- Multi-agent workflows
+- Evaluation pipelines
+- Structured AI output validation
+
+### Engineering infrastructure
+
+- Zod contracts
+- Repository indexing
+- Import-graph analysis
+- Automated tests
+- GitHub Actions
+- CI automation
+- Deterministic quality gates
+
+---
+
+## Why this project matters
+
+The central engineering question behind DevDigest is:
+
+> **How can AI agents become reliable engineering collaborators rather than opaque code generators?**
+
+That requires solving problems beyond prompting:
+
+- providing the right repository context
+- separating trusted and untrusted information
+- constraining agent behaviour
+- validating structured output
+- grounding findings in real source changes
+- measuring quality
+- detecting regressions
+- making workflows repeatable
+- integrating agents into developer tooling and CI
+
+DevDigest is a practical implementation exploring those ideas.
+
+---
 
 ## Prerequisites
 
-- **Node** ≥ 22 · **pnpm** ≥ 10 (`npm i -g pnpm`) · **Docker** (for Postgres)
+- **Node.js** ≥ 22
+- **pnpm** ≥ 10
+- **Docker** for PostgreSQL / pgvector
 
-## Quick start (from zero)
+Install pnpm when needed:
 
-```sh
+```bash
+npm install -g pnpm
+```
+
+---
+
+## Quick start
+
+The recommended local setup is:
+
+```bash
 ./scripts/dev.sh
 ```
 
-This script:
-1. starts Postgres (`docker compose up -d`) and waits until it's healthy,
-2. creates `server/.env` and `client/.env` from `.env.example` if missing,
-3. installs deps in `server/` and `client/` (only when `node_modules` is absent),
-4. applies DB migrations and seeds demo data,
-5. launches the API (`:3001`) and the web app (`:3000`).
+The script:
 
-Open **http://localhost:3000**. Press **Ctrl-C** to stop the dev servers —
-Postgres keeps running (`docker compose down` to stop it).
+1. starts PostgreSQL using Docker;
+2. waits for the database to become healthy;
+3. creates `server/.env` and `client/.env` from the provided examples when needed;
+4. installs package dependencies when `node_modules` is missing;
+5. applies database migrations;
+6. seeds demo data;
+7. starts the API on `:3001`;
+8. starts the web application on `:3000`.
 
-Flags: `--no-seed` · `--no-client` · `--db-only` · `--help`.
+Open:
 
-> Add your keys in `server/.env` (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`,
-> `GITHUB_TOKEN`) or via the Settings UI at runtime.
-
-## Manual steps (what the script does)
-
-```sh
-docker compose up -d                                   # Postgres + pgvector
-
-cd server && pnpm install
-pnpm db:migrate          # apply migrations (NOT run automatically on boot)
-pnpm db:seed             # idempotent demo data (optional)
-pnpm dev                 # API on :3001
-
-cd ../client && pnpm install && pnpm dev               # web on :3000
+```text
+http://localhost:3000
 ```
+
+Press **Ctrl-C** to stop the development servers.
+
+PostgreSQL remains running until stopped explicitly:
+
+```bash
+docker compose down
+```
+
+### Script options
+
+```text
+--no-seed
+--no-client
+--db-only
+--help
+```
+
+---
+
+## Configuration
+
+API credentials can be configured through `server/.env` or through the application settings flow.
+
+Typical integrations include:
+
+```env
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GITHUB_TOKEN=...
+```
+
+Do not commit real credentials to the repository.
+
+---
+
+## Manual setup
+
+The `scripts/dev.sh` helper automates the following steps.
+
+### Start PostgreSQL
+
+```bash
+docker compose up -d
+```
+
+### Install and start the API
+
+```bash
+cd server
+pnpm install
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
+```
+
+The API runs on:
+
+```text
+http://localhost:3001
+```
+
+### Install and start the web app
+
+In a separate terminal:
+
+```bash
+cd client
+pnpm install
+pnpm dev
+```
+
+The web application runs on:
+
+```text
+http://localhost:3000
+```
+
+---
 
 ## Useful scripts
 
-`server/`: `dev` · `build` · `db:migrate` · `db:seed` · `db:generate` · `test` · `typecheck`
-(unit/integration split: `pnpm exec vitest run --exclude '**/*.it.test.ts'` / `pnpm exec vitest run .it.test`)
-`client/`: `dev` · `build` · `start` · `test` · `typecheck`
+### `server/`
+
+```text
+dev
+build
+db:migrate
+db:seed
+db:generate
+test
+typecheck
+```
+
+Server tests can be split between hermetic unit tests and database-backed integration tests.
+
+### `client/`
+
+```text
+dev
+build
+start
+test
+typecheck
+```
+
+Individual packages also contain their own README files with package-specific architecture and development details.
+
+---
 
 ## Testing & CI
 
-One test suite per package, each gated by its own GitHub Actions workflow with a
-path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
+The project maintains separate test suites and GitHub Actions workflows.
 
-| Suite | Workflow | Needs Docker |
-|-------|----------|--------------|
-| client (vitest + jsdom) | `client.yml` | no |
-| server unit (hermetic) | `server-unit.yml` | no |
-| server integration (real Postgres) | `server-integration.yml` | yes |
-| reviewer-core (engine) | `reviewer-core.yml` | no |
-| web e2e (agent-browser, real stack) | `e2e-web.yml` | yes |
+| Suite                       | Workflow                 | Docker |
+| --------------------------- | ------------------------ | ------ |
+| Client (`vitest` + `jsdom`) | `client.yml`             | No     |
+| Server unit tests           | `server-unit.yml`        | No     |
+| Server integration tests    | `server-integration.yml` | Yes    |
+| Reviewer core               | `reviewer-core.yml`      | No     |
+| Web E2E                     | `e2e-web.yml`            | Yes    |
 
-Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers
-Postgres); everything else is hermetic. The browser e2e flows live in
-[`e2e/`](e2e/README.md) and run deterministically (no LLM).
+Server tests are separated by filename:
+
+```text
+*.it.test.ts
+```
+
+are database-backed integration tests, while the remaining tests are designed to run hermetically.
+
+The browser E2E suite uses `agent-browser` and runs against the real application stack without relying on an LLM for deterministic browser flows.
+
+See [`TESTING.md`](TESTING.md) for the detailed testing strategy.
+
+---
 
 ## Troubleshooting
 
-- **`relation ... does not exist` / API errors on first run** — migrations weren't
-  applied. The server does **not** migrate on boot: run `cd server && pnpm db:migrate`.
-- **Port 5432 already in use** — another Postgres is running. Stop it, or change the
-  host port in `docker-compose.yml`.
-- **`vector` type errors** — the pgvector extension is enabled by migration `0000`;
-  make sure migrations ran against the Dockerized DB, not a different one.
-- **Reset everything** — `docker compose down -v` drops the volume, then re-run
-  `./scripts/dev.sh`.
+### `relation ... does not exist`
+
+The database migrations have not been applied.
+
+Run:
+
+```bash
+cd server
+pnpm db:migrate
+```
+
+The API does not automatically migrate the database on startup.
+
+### Port `5432` already in use
+
+Another PostgreSQL instance is already running.
+
+Stop it or change the host port in:
+
+```text
+docker-compose.yml
+```
+
+### `vector` type errors
+
+The `pgvector` extension is enabled by the initial database migration.
+
+Make sure migrations are running against the Dockerized PostgreSQL instance:
+
+```bash
+cd server
+pnpm db:migrate
+```
+
+### Reset the local database
+
+To remove the PostgreSQL volume and recreate the environment:
+
+```bash
+docker compose down -v
+./scripts/dev.sh
+```
+
+---
+
+## Package documentation
+
+Deeper technical documentation is available inside the individual packages:
+
+- [`client/README.md`](client/README.md) — UI and route architecture
+- [`server/README.md`](server/README.md) — API and backend architecture
+- [`reviewer-core/README.md`](reviewer-core/README.md) — review pipeline
+- [`e2e/README.md`](e2e/README.md) — browser E2E testing
+
+---
+
+## Project status
+
+**AI Agentic Engineering capstone / portfolio project**
+
+The project represents an evolving engineering experiment rather than a finished commercial product.
+
+The primary focus is on:
+
+- practical AI-assisted software engineering
+- agentic workflows
+- repository intelligence
+- reliable AI output
+- evaluation and quality gates
+- developer tooling
+- CI integration
+- engineering architecture
+
+This repository is maintained as a separate portfolio-facing project, while the original course development repository remains available separately as a learning/archive record.

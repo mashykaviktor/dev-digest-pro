@@ -1,0 +1,25 @@
+{
+  "name": "Agent Performance dashboard renders its empty state, and the agent editor's Stats tab is reachable",
+  "description": "specs/16-agent-performance-dashboard.md. Seed deliberately fabricates no agent_runs (server/src/db/seed.ts: 'No run history is fabricated here'), so /agent-performance must show its real empty state, not invented zeros (AC-5) — and switching the range preset must not crash it. Also walks Agents → Security Reviewer → Stats tab: a regression check for a real bug found via manual QA on this feature, where AgentEditorView/constants.ts's VALID_TABS gate on ?tab= was never updated to include 'stats', so the tab button and the dashboard's own 'Open' link both silently fell back to the Config tab with no error. Asserting the Stats-only empty-state text (not just the URL, which updates either way) is what actually catches that class of bug. Read-only seeded data (no model call, no review run).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/agent-performance"], "label": "load the Agent Performance dashboard" },
+    { "cmd": ["wait", "--url", "/agent-performance"], "label": "dashboard route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "performance fetch settles" },
+    { "cmd": ["wait", "--text", "Agent Performance"], "label": "page heading renders" },
+    { "cmd": ["wait", "--text", "No agent runs yet"], "label": "AC-5: real empty state, not a fabricated zero-run table" },
+
+    { "cmd": ["find", "role", "radio", "click", "--name", "7 days"], "label": "switch the range preset" },
+    { "cmd": ["wait", "--url", "range_days=7"], "label": "selection mirrors into the URL" },
+    { "cmd": ["wait", "--text", "No agent runs yet"], "label": "still the honest empty state after a range switch, no crash" },
+
+    { "cmd": ["open", "{BASE}/agents"], "label": "load the Agents page" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
+    { "cmd": ["find", "text", "Security Reviewer", "click"], "label": "open the seeded agent" },
+    { "cmd": ["wait", "--url", "/agents/"], "label": "agent editor route reached" },
+    { "cmd": ["wait", "--text", "Configuration"], "label": "editor loads on the Config tab" },
+
+    { "cmd": ["find", "role", "button", "click", "--name", "Stats"], "label": "switch to the agent's Stats tab" },
+    { "cmd": ["wait", "--url", "tab=stats"], "label": "stats tab is active in the URL" },
+    { "cmd": ["wait", "--text", "No runs in this period"], "label": "regression check: Stats content actually renders (not a silent fallback to Config)" }
+  ]
+}

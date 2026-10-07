@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { LLMProvider, StructuredResult } from '@devdigest/shared';
+import type { LLMProvider, StructuredResult, UnifiedDiff } from '@devdigest/shared';
 import { MockLLMProvider, MockGitClient } from '../../server/src/adapters/mocks.js';
 import { reviewPullRequest } from '../src/index.js';
 
@@ -104,6 +104,102 @@ describe('reviewPullRequest (engine)', () => {
     ).rejects.toThrow('cancelled');
   });
 
+  it('threads intentInScope/intentOutOfScope into the prompt (single-pass)', async () => {
+    const seenMessages: string[] = [];
+    const recorder: LLMProvider = {
+      id: 'openrouter',
+      async completeStructured<T>(req): Promise<StructuredResult<T>> {
+        seenMessages.push(req.messages[1]!.content);
+        return {
+          data: fixture as unknown as T,
+          model: req.model,
+          tokensIn: 0,
+          tokensOut: 0,
+          costUsd: 0,
+          raw: '',
+          attempts: 1,
+        };
+      },
+      async listModels() {
+        return [];
+      },
+      async complete() {
+        throw new Error('not used');
+      },
+      async embed() {
+        return [];
+      },
+    };
+    const diff = await new MockGitClient().diff();
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff,
+      llm: recorder,
+      strategy: 'single-pass',
+      intentInScope: ['Rate limiter middleware'],
+      intentOutOfScope: ['Authentication changes'],
+    });
+    expect(outcome.mode).toBe('single-pass');
+    expect(seenMessages).toHaveLength(1);
+    expect(seenMessages[0]).toContain('## Declared PR scope');
+    expect(seenMessages[0]).toContain('Rate limiter middleware');
+    expect(seenMessages[0]).toContain('Authentication changes');
+    expect(outcome.assembly.intent_scope).toContain('Rate limiter middleware');
+  });
+
+  it('threads intentInScope/intentOutOfScope into every chunk (map-reduce)', async () => {
+    const seenMessages: string[] = [];
+    const recorder: LLMProvider = {
+      id: 'openrouter',
+      async completeStructured<T>(req): Promise<StructuredResult<T>> {
+        seenMessages.push(req.messages[1]!.content);
+        return {
+          data: { verdict: 'approve', summary: 'ok', score: 100, findings: [] } as unknown as T,
+          model: req.model,
+          tokensIn: 0,
+          tokensOut: 0,
+          costUsd: 0,
+          raw: '',
+          attempts: 1,
+        };
+      },
+      async listModels() {
+        return [];
+      },
+      async complete() {
+        throw new Error('not used');
+      },
+      async embed() {
+        return [];
+      },
+    };
+    // selectMode only picks map-reduce for multi-file diffs — build one
+    // directly (MockGitClient's default diff has a single file).
+    const diff: UnifiedDiff = {
+      raw: '',
+      files: [
+        { path: 'a.ts', additions: 1, deletions: 0, hunks: [] },
+        { path: 'b.ts', additions: 1, deletions: 0, hunks: [] },
+      ],
+    };
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff,
+      llm: recorder,
+      strategy: 'map-reduce',
+      intentInScope: ['Rate limiter middleware'],
+      intentOutOfScope: [],
+    });
+    expect(outcome.mode).toBe('map-reduce');
+    expect(seenMessages).toHaveLength(2);
+    for (const msg of seenMessages) {
+      expect(msg).toContain('## Declared PR scope');
+      expect(msg).toContain('Rate limiter middleware');
+    }
+  });
+
   it('forwards sessionId to every LLM call (OpenRouter session grouping)', async () => {
     const seen: (string | undefined)[] = [];
     const recorder: LLMProvider = {
@@ -134,5 +230,122 @@ describe('reviewPullRequest (engine)', () => {
     await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm: recorder, sessionId: 'sess-abc' });
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
+  });
+
+  // specs/16-agent-performance-dashboard.md — costSource map-reduce aggregation:
+  // 'provider' only if EVERY chunk reported provider cost, else 'estimated'
+  // (mirrors the null-collapse rule costUsd itself already follows).
+  describe('costSource aggregation (map-reduce)', () => {
+    const twoFileDiff: UnifiedDiff = {
+      raw: '',
+      files: [
+        { path: 'a.ts', additions: 1, deletions: 0, hunks: [] },
+        { path: 'b.ts', additions: 1, deletions: 0, hunks: [] },
+      ],
+    };
+    const clean = { verdict: 'approve', summary: 'ok', score: 100, findings: [] };
+
+    function providerWithCosts(costUsds: number[], costSources: Array<'provider' | 'estimated' | null | undefined>): LLMProvider {
+      let call = 0;
+      return {
+        id: 'openrouter',
+        async completeStructured<T>(): Promise<StructuredResult<T>> {
+          const i = call++;
+          return {
+            data: clean as unknown as T,
+            model: 'm',
+            tokensIn: 0,
+            tokensOut: 0,
+            costUsd: costUsds[i]!,
+            costSource: costSources[i],
+            raw: '',
+            attempts: 1,
+          };
+        },
+        async listModels() {
+          return [];
+        },
+        async complete() {
+          throw new Error('not used');
+        },
+        async embed() {
+          return [];
+        },
+      };
+    }
+
+    it("both chunks 'provider' -> aggregated costSource is 'provider'", async () => {
+      const llm = providerWithCosts([0.01, 0.02], ['provider', 'provider']);
+      const outcome = await reviewPullRequest({
+        systemPrompt: 's',
+        model: 'm',
+        diff: twoFileDiff,
+        llm,
+        strategy: 'map-reduce',
+      });
+      expect(outcome.mode).toBe('map-reduce');
+      expect(outcome.costUsd).toBeCloseTo(0.03);
+      expect(outcome.costSource).toBe('provider');
+    });
+
+    it("one chunk 'estimated' among 'provider' chunks -> aggregated costSource downgrades to 'estimated'", async () => {
+      const llm = providerWithCosts([0.01, 0.02], ['provider', 'estimated']);
+      const outcome = await reviewPullRequest({
+        systemPrompt: 's',
+        model: 'm',
+        diff: twoFileDiff,
+        llm,
+        strategy: 'map-reduce',
+      });
+      expect(outcome.costSource).toBe('estimated');
+    });
+
+    it("a costed chunk with costSource omitted defaults to 'estimated', downgrading the aggregate", async () => {
+      const llm = providerWithCosts([0.01, 0.02], ['provider', undefined]);
+      const outcome = await reviewPullRequest({
+        systemPrompt: 's',
+        model: 'm',
+        diff: twoFileDiff,
+        llm,
+        strategy: 'map-reduce',
+      });
+      expect(outcome.costSource).toBe('estimated');
+    });
+
+    it('aggregated costSource is null whenever costUsd itself is null', async () => {
+      const llm: LLMProvider = {
+        id: 'openrouter',
+        async completeStructured<T>(): Promise<StructuredResult<T>> {
+          return {
+            data: clean as unknown as T,
+            model: 'm',
+            tokensIn: 0,
+            tokensOut: 0,
+            costUsd: null,
+            costSource: null,
+            raw: '',
+            attempts: 1,
+          };
+        },
+        async listModels() {
+          return [];
+        },
+        async complete() {
+          throw new Error('not used');
+        },
+        async embed() {
+          return [];
+        },
+      };
+      const outcome = await reviewPullRequest({
+        systemPrompt: 's',
+        model: 'm',
+        diff: twoFileDiff,
+        llm,
+        strategy: 'map-reduce',
+      });
+      expect(outcome.costUsd).toBeNull();
+      expect(outcome.costSource).toBeNull();
+    });
   });
 });
