@@ -6,10 +6,12 @@ the import graph, a PageRank-based file importance score, and a compact **repo
 map** (the project skeleton). On a review it is only **read** — the index is
 already computed, so adding context to a prompt costs no analysis at request time.
 
-This is **starter infrastructure**: it works from day 1 (the **Indexed** badge),
-but you don't write it. Course lessons build features _on top_ of its facade —
-Blast Radius (L04), Conventions samples (L02), Onboarding reading-path (L05),
-the Phantom-API gate (L06) — by calling `repoIntel.*`, not by re-indexing.
+It works from day 1 (the **Indexed** badge), and other modules build features
+_on top_ of its facade rather than re-indexing: Blast Radius
+(`modules/blast`), Conventions samples (`modules/conventions`), and the
+Onboarding reading-path (`modules/onboarding`) all call `repoIntel.*`. The
+phantom-API gate (unresolved-reference detection) is not yet wired to this
+facade — see the note on `getUnresolvedReferences` below.
 
 ## Pipeline
 
@@ -38,14 +40,19 @@ touch the pipeline internals:
 - `getRepoMap(repoId)` → the cached repo skeleton (fed into the **review prompt**).
 - `getFileRank(repoId, files)` → importance percentile per changed file.
 - `getCallerSignatures(repoId, files, limit)` → callers of changed symbols.
-- `getBlastRadius(repoId, files)` → impacted symbols / callers (used by L04).
-- `getUnresolvedReferences(repoId, …)` → phantom-symbol detection (used by L06).
-- `getConventionSamples(repoId)` → top-ranked files for convention extraction (L02).
+- `getBlastRadius(repoId, files)` → impacted symbols / callers (used by `modules/blast`).
+- `getUnresolvedReferences(repoId, …)` → phantom-symbol detection — defined,
+  not yet called from outside this module.
+- `getConventionSamples(repoId)` → top-ranked files for convention extraction
+  (used by `modules/conventions`).
 
-In the starter, only `getRepoMap` / `getFileRank` / `getCallerSignatures` are
-wired — into `modules/reviews/run-executor.ts`, which adds the repo map and a
-high-blast-radius note to the prompt. Toggled by `REPO_INTEL_ENABLED` (global)
-and a per-agent `repo_intel` flag.
+`getRepoMap` / `getFileRank` / `getCallerSignatures` are wired into
+`modules/reviews/run-executor.ts`, which adds the repo map and a
+high-blast-radius note to the review prompt. Toggled by `REPO_INTEL_ENABLED`
+(global) and a per-agent `repo_intel` flag. The facade also exposes several
+onboarding-oriented methods (`getIndexState`, `getWeightedRankedFiles`,
+`getCriticalPaths`, `getFileFacts`, …) consumed by `modules/onboarding` —
+not enumerated above; read `service.ts` for the full surface.
 
 ## Routes
 

@@ -16,21 +16,21 @@ The **same tests** can also run on **OpenRouter** (DeepSeek and other cheap mode
 > per-run records, per-practice statistics, and a with-vs-without-artifact benchmark, on top of
 > the modular `src/` engine described below.
 
-## Install (from the lesson template)
+## Install
 
-This package is self-contained — it only adds the `evals/` folder and never touches `server/`
-or `client/`, so it merges into your repo cleanly:
+`evals/` is already part of this repository (see the root `CLAUDE.md`'s "Eval Self-Check"
+section for the commands wired into the workflow). To get started locally:
 
 ```bash
-git fetch upstream
-git merge upstream/l06-evals    # adds evals/ only — no conflicts
 cd evals && pnpm install
 ```
 
-If your repo has diverged too far for a clean merge, just copy the `evals/` directory in whole
-and commit it. It is deliberately **not** an npm package: it reads your `.claude/skills/*` and
-`.claude/agents/*` by relative path, and you write cases in it — so the code sits in front of
-you, not hidden in `node_modules`.
+It is self-contained — it only touches the `evals/` folder, never `server/` or `client/` — and is
+deliberately **not** an npm package: it reads `.claude/skills/*` and `.claude/agents/*` by
+relative path, and you write cases in it, so the code sits in front of you, not hidden in
+`node_modules`. If you're lifting this `evals/` folder into a different repo, it copies over
+whole — just drop it in, `cd evals && pnpm install`, and point it at that repo's own
+`.claude/skills/*` / `.claude/agents/*`.
 
 ## Three tiers
 

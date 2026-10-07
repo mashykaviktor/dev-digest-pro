@@ -77,8 +77,14 @@ pnpm test           # vitest run (hermetic; LLM stubbed, no network)
 pnpm build          # ncc build src/index.ts -o dist  →  dist/index.js
 ```
 
-`dist/` and `node_modules/` are git-ignored — `dist/index.js` is a generated
-artifact, regenerate it with `pnpm build`.
+`node_modules/` is git-ignored, but `agent-runner/dist/` is **deliberately
+committed** — the root `.gitignore` ignores `dist/` globally, then explicitly
+un-ignores `!agent-runner/dist/` and `!agent-runner/dist/**`. The target
+repo's generated workflow runs `node .devdigest/runner/index.js` with no
+build step of its own (see "What it does" above), so the bundle has to ship
+as committed source, not something CI regenerates. `dist/index.js` and
+`dist/310.index.js` are generated — don't hand-edit them — but do regenerate
+and commit them with `pnpm build` whenever `src/` changes.
 
 ## Runtime environment (set by the target repo's workflow)
 
